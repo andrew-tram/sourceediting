@@ -14,11 +14,11 @@
 package org.eclipse.jst.jsp.core.internal.contentmodel;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 
 import org.eclipse.core.filebuffers.FileBuffers;
 import org.eclipse.core.filebuffers.IDocumentSetupParticipant;
@@ -56,7 +56,6 @@ public class TaglibController implements IDocumentSetupParticipant, IDocumentSet
 
 	class DocumentInfo implements ITaglibIndexListener {
 		IStructuredDocument document;
-		ITextFileBuffer textFileBuffer;
 		IPath location;
 		LocationKind locationKind;
 		TLDCMDocumentManager tldDocumentManager;
@@ -128,13 +127,11 @@ public class TaglibController implements IDocumentSetupParticipant, IDocumentSet
 					info = _instance.fDocumentMap.get(document);
 				}
 				if (info != null) {
-					// remember the buffer now
-					info.textFileBuffer = (ITextFileBuffer) buffer;
+					_instance.fTextFileBufferMap.put(buffer, info);
 				}
 				else {
 					info = new DocumentInfo();
 					info.document = (IStructuredDocument) document;
-					info.textFileBuffer = (ITextFileBuffer) buffer;
 					info.location = buffer.getLocation();
 					info.locationKind = LocationKind.NORMALIZE;
 					info.tldDocumentManager = new TLDCMDocumentManager();
@@ -142,6 +139,7 @@ public class TaglibController implements IDocumentSetupParticipant, IDocumentSet
 					synchronized (_instance.fDocumentMap) {
 						_instance.fDocumentMap.put(document, info);
 					}
+					_instance.fTextFileBufferMap.put(buffer, info);
 					if (document instanceof BasicStructuredDocument && document.getLength() > 0) {
 						((BasicStructuredDocument) document).reparse(this);
 					}
@@ -156,6 +154,8 @@ public class TaglibController implements IDocumentSetupParticipant, IDocumentSet
 		 * @see org.eclipse.core.filebuffers.IFileBufferListener#bufferDisposed(org.eclipse.core.filebuffers.IFileBuffer)
 		 */
 		public void bufferDisposed(IFileBuffer buffer) {
+			DocumentInfo info;
+			
 			if (buffer instanceof ITextFileBuffer) {
 				IDocument document = ((ITextFileBuffer) buffer).getDocument();
 				synchronized (_instance.fJSPdocuments) {
@@ -163,24 +163,12 @@ public class TaglibController implements IDocumentSetupParticipant, IDocumentSet
 						return;
 				}
 			}
-
-			synchronized (fDocumentMap) {
-				Iterator<Entry<IDocument, DocumentInfo>> infos = fDocumentMap.entrySet().iterator();
-				while(infos.hasNext()) {
-					Entry<IDocument, DocumentInfo> entry = infos.next();
-					/**
-					 * https://bugs.eclipse.org/bugs/show_bug.cgi?id=222137
-					 * 
-					 * Might be null if setup() has been called but
-					 * bufferCreated() has not, yet.
-					 */
-					DocumentInfo info = entry.getValue();
-					if (info.textFileBuffer != null && info.textFileBuffer.equals(buffer)) {
-						info.tldDocumentManager.clearCache();
-						TaglibIndex.removeTaglibIndexListener(info);
-						infos.remove();
-						break;
-					}
+			info = _instance.fTextFileBufferMap.remove(buffer); 
+			if (info != null) {
+				info.tldDocumentManager.clearCache();
+				TaglibIndex.removeTaglibIndexListener(info);
+				synchronized (fDocumentMap) {
+					fDocumentMap.remove(info.document);
 				}
 			}
 		}
@@ -310,7 +298,7 @@ public class TaglibController implements IDocumentSetupParticipant, IDocumentSet
 	IFileBufferListener fBufferListener;
 
 	Map<IDocument, DocumentInfo> fDocumentMap;
-
+	Map<IFileBuffer, DocumentInfo> fTextFileBufferMap;
 	List<IDocument> fJSPdocuments;
 
 	/*
@@ -322,6 +310,7 @@ public class TaglibController implements IDocumentSetupParticipant, IDocumentSet
 		fBufferListener = new FileBufferListener();
 		fJSPdocuments = new ArrayList<>(1);
 		fDocumentMap = new HashMap<>(1);
+		fTextFileBufferMap = Collections.synchronizedMap(new HashMap<>(1));
 	}
 
 
@@ -359,7 +348,6 @@ public class TaglibController implements IDocumentSetupParticipant, IDocumentSet
 
 		DocumentInfo info = new DocumentInfo();
 		info.document = (IStructuredDocument) document;
-		info.textFileBuffer = null; // will be supplied later
 		info.location = location;
 		info.locationKind = locationKind;
 		info.tldDocumentManager = new TLDCMDocumentManager();
