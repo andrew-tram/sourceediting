@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2001, 2021 IBM Corporation and others.
+ * Copyright (c) 2001, 2025 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
  * which accompanies this distribution, and is available at
@@ -37,9 +37,9 @@ import org.eclipse.jface.preference.PreferenceConverter;
 import org.eclipse.jface.preference.PreferencePage;
 import org.eclipse.jface.viewers.ArrayContentProvider;
 import org.eclipse.jface.viewers.ColumnWeightData;
-import org.eclipse.jface.viewers.LabelProvider;
 import org.eclipse.jface.viewers.SelectionChangedEvent;
 import org.eclipse.jface.viewers.TableViewer;
+import org.eclipse.jface.viewers.TableViewerColumn;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.accessibility.ACC;
 import org.eclipse.swt.accessibility.AccessibleAdapter;
@@ -245,7 +245,7 @@ public class StructuredTextEditorPreferencePage extends PreferencePage implement
 		l.setLayoutData(gd);
 
 		l = new Label(appearanceComposite, SWT.LEFT);
-		l.setText(SSEUIMessages.StructuredTextEditorPreferencePage_23); // $NON-NLS-1$
+		// l.setText(SSEUIMessages.StructuredTextEditorPreferencePage_23); // $NON-NLS-1$
 		gd = new GridData(GridData.HORIZONTAL_ALIGN_FILL);
 		gd.horizontalSpan = 2;
 		l.setLayoutData(gd);
@@ -261,9 +261,9 @@ public class StructuredTextEditorPreferencePage extends PreferencePage implement
 		editorComposite.setLayoutData(gd);
 
 		Composite tableComposite = new Composite(editorComposite, SWT.NONE);
-		GridData tableGD = new GridData(GridData.FILL_VERTICAL);
+		GridData tableGD = new GridData(GridData.FILL_BOTH);
 		tableComposite.setLayoutData(tableGD);
-		fAppearanceColorTableViewer = new TableViewer(tableComposite, SWT.SINGLE | SWT.V_SCROLL | SWT.BORDER);
+		fAppearanceColorTableViewer = new TableViewer(tableComposite, SWT.SINGLE | SWT.V_SCROLL | SWT.BORDER | SWT.FULL_SELECTION);
 		initializeAppearanceColorTable(tableComposite);
 		Arrays.sort(fAppearanceColorListModel);
 		fAppearanceColorTableViewer.setInput(fAppearanceColorListModel);
@@ -420,48 +420,97 @@ public class StructuredTextEditorPreferencePage extends PreferencePage implement
 	}
 
 	private void initializeAppearanceColorTable(Composite tableComposite) {
-		fAppearanceColorTableViewer.addSelectionChangedListener((SelectionChangedEvent event) -> handleAppearanceColorViewerSelection());
-		colorPreviewImages = new ArrayList<>();
-		fAppearanceColorTableViewer.setContentProvider(new ArrayContentProvider());
-		fAppearanceColorTableViewer.setLabelProvider(new LabelProvider() {
-			@Override
-			public Image getImage(Object element) {
-				ColorEntry colorEntry = ((ColorEntry) element);
-				if (colorEntry.isSystemDefault() && colorEntry.systemColorRGB == null) {
-					return null;
-				}
-				RGB rgb = colorEntry.isSystemDefault() ? colorEntry.systemColorRGB : colorEntry.getRGB();
-				Color color = new Color(tableComposite.getParent().getDisplay(), rgb.red, rgb.green, rgb.blue);
-				int dimensions = 10;
-				Image image = new Image(tableComposite.getParent().getDisplay(), dimensions, dimensions);
-				GC gc = new GC(image);
-				// Draw color preview
-				gc.setBackground(color);
-				gc.fillRectangle(0, 0, dimensions, dimensions);
-				// Draw outline around color preview
-				gc.setBackground(new Color(tableComposite.getParent().getDisplay(), 0, 0, 0));
-				gc.setLineWidth(2);
-				gc.drawRectangle(0, 0, dimensions, dimensions);
-				gc.dispose();
-				color.dispose();
-				colorPreviewImages.add(image);
-				return image;
-			}
+	    for (org.eclipse.swt.widgets.Control c : tableComposite.getChildren()) {
+	        c.dispose();
+	    }
 
-			@Override
-			public String getText(Object element) {
-				return ((ColorEntry) element).label;
-			}
-		});
-		TableColumn tc = new TableColumn(fAppearanceColorTableViewer.getTable(), SWT.NONE, 0);
-		TableColumnLayout tableColumnLayout = new TableColumnLayout(true);
-		PixelConverter pixelConverter = new PixelConverter(tableComposite.getParent().getFont());
-		tableColumnLayout.setColumnData(tc, new ColumnWeightData(1, pixelConverter.convertWidthInCharsToPixels(30)));
-		tableComposite.setLayout(tableColumnLayout);
-		GridData gd = new GridData(GridData.VERTICAL_ALIGN_BEGINNING | GridData.FILL_BOTH);
-		Table fAppearanceColorTable = fAppearanceColorTableViewer.getTable();
-		gd.heightHint = fAppearanceColorTable.getItemHeight() * fAppearanceColorListModel.length + fAppearanceColorTable.getItemHeight()/2;
-		fAppearanceColorTable.setLayoutData(gd);
+	    TableColumnLayout tcl = new TableColumnLayout(true);
+	    tableComposite.setLayout(tcl);
+
+	    Table table = new Table(
+	        tableComposite,
+	        SWT.SINGLE | SWT.FULL_SELECTION | SWT.BORDER | SWT.V_SCROLL
+	    );
+	    table.setHeaderVisible(true);
+	    table.setLinesVisible(true);
+
+	    fAppearanceColorTableViewer = new TableViewer(table);
+	    fAppearanceColorTableViewer.setContentProvider(new ArrayContentProvider());
+
+	    TableViewerColumn viewerCol = new TableViewerColumn(fAppearanceColorTableViewer, SWT.LEFT);
+	    TableColumn column = viewerCol.getColumn();
+
+	    String headerText = SSEUIMessages.StructuredTextEditorPreferencePage_23
+	        .replace("&", "")
+	        .replaceAll(":$", "");
+	    column.setText(headerText);
+	    column.setMoveable(false);
+	    column.setResizable(true);
+
+	    PixelConverter px = new PixelConverter(tableComposite.getParent().getFont());
+	    tcl.setColumnData(column, new ColumnWeightData(1, px.convertWidthInCharsToPixels(50)));
+
+	    colorPreviewImages = new ArrayList<>();
+	    viewerCol.setLabelProvider(new org.eclipse.jface.viewers.ColumnLabelProvider() {
+	        @Override
+	        public String getText(Object element) {
+	            return ((ColorEntry) element).label;
+	        }
+	        @Override
+	        public Image getImage(Object element) {
+	            ColorEntry ce = (ColorEntry) element;
+	            if (ce.isSystemDefault() && ce.systemColorRGB == null) return null;
+	            RGB rgb = ce.isSystemDefault() ? ce.systemColorRGB : ce.getRGB();
+	            if (rgb == null) return null;
+
+	            final int d = 10;
+	            Image image = new Image(tableComposite.getDisplay(), d, d);
+	            GC gc = new GC(image);
+	            Color color = new Color(tableComposite.getDisplay(), rgb);
+	            gc.setBackground(color);
+	            gc.fillRectangle(0, 0, d, d);
+	            gc.setForeground(tableComposite.getDisplay().getSystemColor(SWT.COLOR_BLACK));
+	            gc.setLineWidth(2);
+	            gc.drawRectangle(0, 0, d, d);
+	            gc.dispose();
+	            color.dispose();
+	            colorPreviewImages.add(image);
+	            return image;
+	        }
+	    });
+
+	    fAppearanceColorTableViewer.addSelectionChangedListener(
+	        (SelectionChangedEvent event) -> handleAppearanceColorViewerSelection());
+
+	    Arrays.sort(fAppearanceColorListModel);
+	    fAppearanceColorTableViewer.setInput(fAppearanceColorListModel);
+
+	    table.getAccessible().addAccessibleListener(new AccessibleAdapter() {
+	        @Override
+	        public void getName(AccessibleEvent e) {
+	            if (e.childID == ACC.CHILDID_SELF) {
+	                e.result = headerText; // "Appearance color options"
+	            } else if (e.childID >= 0 && e.childID < table.getItemCount()) {
+	                e.result = headerText + ": " + table.getItem(e.childID).getText(0);
+	            }
+	        }
+	    });
+	    table.getAccessible().addAccessibleControlListener(new org.eclipse.swt.accessibility.AccessibleControlAdapter() {
+	        @Override
+	        public void getRole(org.eclipse.swt.accessibility.AccessibleControlEvent e) {
+	            if (e.childID == ACC.CHILDID_SELF) {
+	                e.detail = ACC.ROLE_TABLE;
+	            } else {
+	                e.detail = ACC.ROLE_TABLECELL; // single logical column
+	            }
+	        }
+	    });
+
+	    GridData parentGD = (GridData) tableComposite.getLayoutData();
+	    if (parentGD != null) {
+	        parentGD.heightHint = table.getItemHeight() * fAppearanceColorListModel.length
+	                            + table.getItemHeight() / 2;
+	    }
 	}
 
 	private void initializeFields() {
